@@ -2,7 +2,7 @@
 obj-m += thread_manager_spowner.o
 
 obj-m += thread_manager_spowner.o
-thread_manager_spowner-objs := ./src/thread_manager_spowner/thread_manager_spowner.o ./src/thread_manager_spowner/ioctl_switch_functions.o
+thread_manager_spowner-objs := ./src/thread_manager_spowner/thread_manager_spowner.o ./src/thread_manager_spowner/ioctl_switch_functions.o ./src/group_message_manager/group_message_manager.o
 
 
 CURRENT_PATH = $(shell pwd)

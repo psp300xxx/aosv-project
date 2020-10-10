@@ -3,10 +3,11 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
-#include <linux/fs.h>
 #include <linux/string.h>
+#include <linux/fs.h>
 #include "ioctl_switch_functions.h"
 #include "thread_manager_spowner.h"
+#include "../group_message_manager/group_message_manager.h"
 #include <linux/kdev_t.h>
 #include <linux/types.h>
 
@@ -14,19 +15,17 @@
 struct device *device_group = NULL;
 EXPORT_SYMBOL(device_group);
 
-int registered =0;
 
-
-char * name = NULL;
+char * driver_name = NULL;
 int major_number;
 static dev_t  current_devt = 1;
 static int number_devices = 0;
+struct devices_created devices;
+int list_devices_created =0;
 
 int current_open(struct inode *inode, struct file *filp);
 static ssize_t current_read(struct file * file, char * buffer, size_t lenght, loff_t * offset);
 
-
-struct devices_created devices;
 
 int unregister_and_destroy_all_devices(){
 		struct devices_created * iter;
@@ -48,19 +47,25 @@ int unregister_and_destroy_all_devices(){
 long set_new_driver( int group ){
     int ret;
     struct devices_created * iter;
+	if(list_devices_created){
+		list_for_each_entry(iter, &devices.list, list){
+				if(iter->group == group){
+					return 0;
+				}
+		}
+	}
 	printk(KERN_ERR "dev cl gourp %d", dev_cl_group);
-    printk(KERN_DEBUG "number devices %d ", number_devices);
     ret = init_new_device(group);
     if (!ret){
         if (!number_devices){
             INIT_LIST_HEAD(&devices.list);
+			list_devices_created=1;
         }
         ret = add_group_list(&devices, group, current_devt, major_number);
 		number_devices++;
-        printk(KERN_DEBUG "INSTALLING GROUP %d ok", group); 
+		printk(KERN_DEBUG "number devices %d ", number_devices);
         return 0;
     }
-    printk(KERN_DEBUG "INSTALLING GROUP %d failed", group);
     return -1;
 }
 
@@ -77,13 +82,6 @@ int add_group_list(struct devices_created * devs, int group, dev_t new_devt, int
     return group;
 }
 
-struct file_operations file_ops = {
-	open: current_open,
-    read: current_read,
-	// unlocked_ioctl: mydev_ioctl,
-	// compat_ioctl: mydev_ioctl,
-	// release: mydev_release
-};
 
 static ssize_t current_read(struct file * file, char * buffer, size_t lenght, loff_t * offset){
 	char * total;
@@ -99,17 +97,6 @@ static ssize_t current_read(struct file * file, char * buffer, size_t lenght, lo
 
 int current_open(struct inode *inode, struct file *filp) {
 
-	// It's meaningless to open this device in write mode
-	// if (((filp->f_flags & O_ACCMODE) == O_WRONLY) || ((filp->f_flags & O_ACCMODE) == O_RDWR)) {
-	//  	return -EACCES;
-	// }
-
-	// // Only one access at a time
-	// if (!mutex_trylock(&mydev_mutex)) {
-	// 	printk(KERN_INFO "%s: Trying to open an already-opened special device file\n", DRIVER_NAME);
-	// 	return -EBUSY;
-	// }
-
 	return 0;
 }
 
@@ -118,19 +105,15 @@ int current_open(struct inode *inode, struct file *filp) {
 int  init_new_device(int group)
 {
 	int err;
-	char * name ;
-	name = kmalloc(sizeof(char) * 20,0 );
-	sprintf(name, DRIVER_NAME_NUMB, group);
-	major_number = register_chrdev(0, name, &file_ops);
-    // if (!registered){
-	//     major_number = register_chrdev(0, name, &file_ops);
-    //     registered=1;
-    // }
-    printk(KERN_DEBUG "%s major number %d",name, major_number);
+	char * driver_name ;
+	driver_name = kmalloc(sizeof(char) * 20,0 );
+	sprintf(driver_name, DRIVER_NAME_NUMB, group);
+	major_number = register_chrdev(0, driver_name, &file_ops_gmm_origin);
+    printk(KERN_DEBUG "%s major number %d",driver_name, major_number);
 
 	// Dynamically allocate a major_number for the device
 	if (major_number < 0) {
-		printk(KERN_ERR "%s: Failed registering char device\n", name);
+		printk(KERN_ERR "%s: Failed registering char device\n", driver_name);
 		err = major_number;
 		goto finish;
 	}
@@ -143,20 +126,20 @@ int  init_new_device(int group)
 	// else {
     // 	current_devt = MKDEV(MAJOR(current_devt), MINOR(current_devt)+1);
 	// }
-	device_group = device_create(dev_cl_group, NULL, current_devt, NULL, name);
+	device_group = device_create(dev_cl_group, NULL, current_devt, NULL, driver_name);
 	if (IS_ERR(device_group)) {
-		printk(KERN_ERR "%s: failed to create device group %ld\n", name, dev_cl_group);
+		printk(KERN_ERR "%s: failed to create device group %ld\n", driver_name, dev_cl_group);
 		pr_err("%s:%d error code %ld \n", __func__, __LINE__, PTR_ERR(device_group));
 		err = PTR_ERR(device_group);
 		goto failed_classreg;
 	}
 
-	printk(KERN_INFO "%s: special device registered with major_number number %d\n", name, major_number);
+	printk(KERN_INFO "%s: special device registered with major_number number %d\n", driver_name, major_number);
 
 	return 0;
 failed_classreg:
-	unregister_chrdev(major_number, name);
+	unregister_chrdev(major_number, driver_name);
 finish:
-	kfree(name);
+	kfree(driver_name);
 	return err;
 }

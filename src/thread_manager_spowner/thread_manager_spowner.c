@@ -5,12 +5,13 @@
 #include <linux/version.h>
 #include <linux/uaccess.h>
 #include <linux/kernel.h>
+#include <linux/hashtable.h>
+
 #include <asm-generic/errno-base.h>
 #include <asm/uaccess.h>
 #include <linux/slab.h>
 #include "ioctl_switch_functions.h"
 #include "thread_manager_spowner.h"
-
 MODULE_AUTHOR("Luigi De Marco <demarco.1850504@studenti.uniroma1.it>");
 MODULE_DESCRIPTION("ioctl example");
 MODULE_LICENSE("GPL");
@@ -24,9 +25,18 @@ struct class * dev_cl_group =NULL;
 int major_secondary = -1;
 // EXPORT_SYMBOL(dev_cl_group);
 
+
+
+
 char * msg;
 /// Only one process at a time can interact with this mutex
 static DEFINE_MUTEX(mydev_mutex);
+// DEFINE_HASHTABLE(hash_table, 5) ;
+
+// extern struct hlist_head hash_table[1 << (20)];
+
+// DEFINE_HASHTABLE(hash_table, 20);
+// EXPORT_SYMBOL(hash_table);
 
 /// File operations for the module
 struct file_operations fops = {
@@ -105,6 +115,7 @@ int mydev_release(struct inode *inode, struct file *filp)
 
 static int __init mydev_init(void)
 {
+	// hash_init(hash_table);
 	int err;
 
 	major = register_chrdev(0, DRIVER_NAME, &fops);
