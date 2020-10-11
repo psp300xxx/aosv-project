@@ -24,10 +24,9 @@ struct devices_created devices;
 int list_devices_created =0;
 
 int current_open(struct inode *inode, struct file *filp);
-static ssize_t current_read(struct file * file, char * buffer, size_t lenght, loff_t * offset);
 
 
-int unregister_and_destroy_all_devices(){
+void unregister_and_destroy_all_devices(){
 		struct devices_created * iter;
 		char * current_driver_name;
 		current_driver_name = kmalloc(sizeof(char)*20,0);
@@ -54,14 +53,16 @@ long set_new_driver( int group ){
 				}
 		}
 	}
-	printk(KERN_ERR "dev cl gourp %d", dev_cl_group);
     ret = init_new_device(group);
     if (!ret){
-        if (!number_devices){
+        if (!list_devices_created){
             INIT_LIST_HEAD(&devices.list);
 			list_devices_created=1;
         }
         ret = add_group_list(&devices, group, current_devt, major_number);
+		if(ret<0){
+			return -1;
+		}
 		number_devices++;
 		printk(KERN_DEBUG "number devices %d ", number_devices);
         return 0;
@@ -72,7 +73,7 @@ long set_new_driver( int group ){
 int add_group_list(struct devices_created * devs, int group, dev_t new_devt, int major){
 	struct devices_created *tmp;
 	tmp = (struct devices_created *)kmalloc(sizeof(struct devices_created), 0);
-	if (!tmp) {
+	if (tmp==NULL) {
 		return -1;
 	}
 	tmp -> group = group;
@@ -83,17 +84,6 @@ int add_group_list(struct devices_created * devs, int group, dev_t new_devt, int
 }
 
 
-static ssize_t current_read(struct file * file, char * buffer, size_t lenght, loff_t * offset){
-	char * total;
-	struct devices_created * iter;
-	total = kmalloc(sizeof(char)*40,0);
-	list_for_each_entry(iter, &devices.list, list){
-			sprintf(total, "%s%d",total, iter->group);
-	}
-	copy_to_user(buffer, total, lenght);
-	kfree(total);
-	return lenght;
-}
 
 int current_open(struct inode *inode, struct file *filp) {
 
@@ -107,6 +97,9 @@ int  init_new_device(int group)
 	int err;
 	char * driver_name ;
 	driver_name = kmalloc(sizeof(char) * 20,0 );
+	if(driver_name==NULL){
+		return -ENOMEM;
+	}
 	sprintf(driver_name, DRIVER_NAME_NUMB, group);
 	major_number = register_chrdev(0, driver_name, &file_ops_gmm_origin);
     printk(KERN_DEBUG "%s major number %d",driver_name, major_number);
@@ -128,7 +121,6 @@ int  init_new_device(int group)
 	// }
 	device_group = device_create(dev_cl_group, NULL, current_devt, NULL, driver_name);
 	if (IS_ERR(device_group)) {
-		printk(KERN_ERR "%s: failed to create device group %ld\n", driver_name, dev_cl_group);
 		pr_err("%s:%d error code %ld \n", __func__, __LINE__, PTR_ERR(device_group));
 		err = PTR_ERR(device_group);
 		goto failed_classreg;

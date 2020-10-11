@@ -8,6 +8,5 @@ typedef struct {
 
 typedef struct {
     char message [MESSAGE_LENGTH];
-    unsigned long time_of_deliver;
     pid_t sender;
 } thread_message;

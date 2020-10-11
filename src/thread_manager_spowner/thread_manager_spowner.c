@@ -17,7 +17,7 @@ MODULE_DESCRIPTION("ioctl example");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("1.0.0");
 
-static ssize_t my_read(struct file * file, char __user * buffer, size_t lenght, loff_t * offset);
+// static ssize_t my_read(struct file * file, char __user * buffer, size_t lenght, loff_t * offset);
 long mydev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 int mydev_open(struct inode *inode, struct file *filp);
 int mydev_release(struct inode *inode, struct file *filp);
@@ -27,8 +27,6 @@ int major_secondary = -1;
 
 
 
-
-char * msg;
 /// Only one process at a time can interact with this mutex
 static DEFINE_MUTEX(mydev_mutex);
 // DEFINE_HASHTABLE(hash_table, 5) ;
@@ -41,28 +39,12 @@ static DEFINE_MUTEX(mydev_mutex);
 /// File operations for the module
 struct file_operations fops = {
 	open: mydev_open,
-    read: my_read,
 	unlocked_ioctl: mydev_ioctl,
 	compat_ioctl: mydev_ioctl,
 	release: mydev_release
 };
 
-static ssize_t my_read(struct file * file, char * buffer, size_t lenght, loff_t * offset){
-	int i;
-	char * tmp;
-	int msg_len;
-	int written;
-    i = 0;
-	written = 0;
-	tmp = msg;
-	msg_len = strlen(msg);
-	while(msg_len){
-        	put_user(*(tmp++), buffer++);
-		msg_len--;	
-		written++;	
-	}
-    return written;
-}
+
 
 
 long mydev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
@@ -102,6 +84,7 @@ int mydev_open(struct inode *inode, struct file *filp) {
 	}
 
 	return 0;
+
 }
 
 
@@ -119,8 +102,6 @@ static int __init mydev_init(void)
 	int err;
 
 	major = register_chrdev(0, DRIVER_NAME, &fops);
-	msg = kmalloc(sizeof(char)* 20, 0);
-	msg = "hola";
 	// Dynamically allocate a major for the device
 	if (major < 0) {
 		printk(KERN_ERR "%s: Failed registering char device\n", DRIVER_NAME);
