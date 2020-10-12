@@ -4,17 +4,15 @@
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/mutex.h>
-
 #include <linux/sched.h>
+
 #include <linux/hashtable.h>
 #include <linux/types.h>
-#include "../thread_manager_spowner/thread_manager_spowner.h"
+
 
 #define CONTROL_NUMBER 633443
 
 static int table_initialized = 0;
-static int open_control = 0;
-DECLARE_WAIT_QUEUE_HEAD(wait_queue);
 static DEFINE_HASHTABLE(hash_table, 16);
 node_information * get_device_data(dev_t i_ino);
 struct h_node {
@@ -84,11 +82,11 @@ int gmm_open(struct inode *inode, struct file *filp){
         hash_add(hash_table, &my_node->node_info, key);
     }
     filp->private_data = node_info;
+    printk(KERN_ALERT "OPENING OJA");
     return 0;
 }
 
 int gmm_release(struct inode * inode, struct file * filp){
-    open_control--;
     printk(KERN_ALERT "CLOSING\n");
     return 0;
 }
@@ -97,33 +95,102 @@ void destroy_map(){
 
 }
 
+inline void publish_message_from_publishing_queue(node_information * node_info,struct message_queue * msg){
+    list_del(&msg->list);
+    list_add_tail(&node_info->delivering_queue.list, &msg->list);
+}
+
 
 ssize_t gmm_read(struct file * file, char * buffer, size_t lenght, loff_t * offset){
-    char * msg;
+    struct message_queue * iter;
+    ktime_t current_time;
+    char * err_msg;
+    int ret;
     node_information * node_info;
-    // printk(KERN_ALERT "TEST IF I ARRIVE HERE %p\n", file->private_data);
-    node_info = (node_information *)file->private_data;
-    msg = kmalloc(sizeof(char)*20,0);
-    if(msg==NULL){
-        copy_to_user(buffer, "ERROR", strlen("ERROR"));
-        return strlen("ERROR");
+    node_info = file->private_data;
+    printk(KERN_ALERT "reading");
+    read_lock_irqsave(&node_info->lock,node_info->lock_flags);
+    current_time = ktime_get_boottime();
+    // at first I publish the messages in publishing queue having the rights to be published
+    list_for_each_entry(iter, &node_info->publishing_queue.list, list){
+			if(iter->publishing_time <= current_time){
+					publish_message_from_publishing_queue(node_info, iter);
+			}
+	}
+    // I deliver the next message to the user
+    if( !list_empty(&node_info->delivering_queue.list) ){
+        iter = list_first_entry(&node_info->delivering_queue.list, struct message_queue, list);
+        // list_first_entry(&node_info->delivering_queue.list, iter, list);
+        list_del(&iter->list);
+        ret = strlen(iter->message->message);
+        copy_to_user(buffer, iter->message->message, ret);
+        goto end;
     }
-    printk(KERN_ALERT "count val%ld\n", node_info->open_count);
-    sprintf(msg, "OP %ld\n",node_info->open_count);
-    copy_to_user(buffer, msg, strlen(msg));
-    kfree(msg);
-    return strlen(msg);
+    else {
+        // queue is empty
+        ret = strlen(QUEUE_EMPTY_MESSAGE);
+        err_msg = kmalloc(sizeof(char)*ret, GFP_KERNEL);
+        if(err_msg==NULL){
+            return -ENOMEM;
+        }
+        sprintf(err_msg, "%s", QUEUE_EMPTY_MESSAGE);
+        copy_to_user(buffer, err_msg, strlen(err_msg));
+        ret = 0;
+        kfree(err_msg);
+    }
+    end:
+        read_unlock_irqrestore(&node_info->lock,node_info->lock_flags);
+        return ret;
 }
 
 ssize_t gmm_write(struct file * file, const char __user * buffer, size_t lenght, loff_t * offset ){
+    node_information * node_info = file->private_data;
+    ktime_t current_time;
+    ktime_t sending_time;
+    char * msg; 
+    struct message_queue * queue;
+    thread_message * thread_msg;
+    write_lock_irqsave(&node_info->lock,node_info->lock_flags);
+    thread_msg = kmalloc(sizeof(thread_message), GFP_KERNEL);
+    msg = kmalloc(sizeof(char)*MESSAGE_LENGTH, GFP_KERNEL);
+    queue = kmalloc(sizeof(struct message_queue), GFP_KERNEL);
+    if(thread_msg==NULL || msg == NULL || queue ==NULL){
+        return -ENOMEM;
+    }
+    if(node_info->sending_delay <= 0){
+        // direct publishing message on delivering queue
+        sending_time = ktime_get_boottime();
+        thread_msg->sender = current->pid;
+        copy_from_user(msg, buffer, lenght);
+        sprintf(thread_msg->message, "%s", msg);
+        queue -> message = thread_msg;
+        queue -> publishing_time = sending_time;
+        list_add_tail( &(queue->list), &(node_info->delivering_queue.list) );
+    }
+    else {
+        // pushing into publishing queue
+        current_time = ktime_get_boottime();
+        sending_time = current_time + node_info->sending_delay;
+        thread_msg->sender = current->pid;
+        copy_from_user(msg, buffer, MESSAGE_LENGTH);
+        sprintf(thread_msg->message, "%s", msg);
+        queue -> message = thread_msg;
+        queue -> publishing_time = sending_time;
+        printk(KERN_ALERT "IFNDWO");
+        list_add_tail( &(queue->list), &(node_info->publishing_queue.list) );
+        printk(KERN_ALERT "fsfsw");
+    }
+    kfree(msg);
+    write_unlock_irqrestore(&node_info->lock,node_info->lock_flags);
     return 0;
 }
 
+
 struct file_operations file_ops_gmm_origin = {
-	open: gmm_open,
-    read: gmm_read,
-    write: gmm_write,
-    release:gmm_release,
+	.open= gmm_open,
+    .read= gmm_read,
+    .write= gmm_write,
+    .release= gmm_release,
 	// unlocked_ioctl: mydev_ioctl,
 	// compat_ioctl: mydev_ioctl,
 	// release: mydev_release

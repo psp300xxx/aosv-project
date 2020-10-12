@@ -1,5 +1,4 @@
 #include <linux/ioctl.h>
-// #include <linux/device.h>
 #include "../common.h"
 
 #define HASH_BITS_USED 20

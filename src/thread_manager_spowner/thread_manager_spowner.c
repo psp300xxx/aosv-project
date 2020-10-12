@@ -72,16 +72,11 @@ static struct device *device = NULL;
 
 int mydev_open(struct inode *inode, struct file *filp) {
 
-	// It's meaningless to open this device in write mode
-	if (((filp->f_flags & O_ACCMODE) == O_WRONLY) || ((filp->f_flags & O_ACCMODE) == O_RDWR)) {
-	 	return -EACCES;
-	}
 
-	// Only one access at a time
-	if (!mutex_trylock(&mydev_mutex)) {
-		printk(KERN_INFO "%s: Trying to open an already-opened special device file\n", DRIVER_NAME);
-		return -EBUSY;
-	}
+	// if (!mutex_trylock(&mydev_mutex)) {
+	// 	printk(KERN_INFO "%s: Trying to open an already-opened special device file\n", DRIVER_NAME);
+	// 	return -EBUSY;
+	// }
 
 	return 0;
 

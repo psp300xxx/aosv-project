@@ -1,4 +1,4 @@
-
+// #include <sys/types.h>
 #define MESSAGE_LENGTH 50
 
 typedef struct {
@@ -8,5 +8,5 @@ typedef struct {
 
 typedef struct {
     char message [MESSAGE_LENGTH];
-    pid_t sender;
+    int sender;
 } thread_message;

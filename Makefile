@@ -10,7 +10,7 @@ LINUX_KERNEL = $(shell uname -r)
 LINUX_KERNEL_PATH = /lib/modules/$(LINUX_KERNEL)/build/
 all:
 			make -C $(LINUX_KERNEL_PATH) M=$(CURRENT_PATH) modules
-			gcc $(CURRENT_PATH)/src/user_space_test_app/main.c -o $(CURRENT_PATH)/main.out
+			gcc $(CURRENT_PATH)/src/user_space_test_app/main.c $(CURRENT_PATH)/src/userspace_library/thread_msn.c -o $(CURRENT_PATH)/main.out
 
 clean:
 			make -C $(LINUX_KERNEL_PATH) M=$(CURRENT_PATH) clean

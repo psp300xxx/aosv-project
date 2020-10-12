@@ -1,52 +1,53 @@
 #include <stdio.h>
-#include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <unistd.h>
 #include <sys/types.h>
 // #include "../common.h"
-#include "../thread_manager_spowner/thread_manager_spowner.h"
+#include "../userspace_library/thread_msn.h"
 #define STRING_LEN 20
 
 groupt info;
 
 int main(void) {
-	int fd = open("/dev/thread_manager_spowner", O_RDONLY);
-	if(fd < 0) {
-		perror("Error opening /dev/thread_manager_spowner");
-		exit(EXIT_FAILURE);
-	}
-	info.group = 29;
-	int ret = ioctl(fd, IOCTL_INSTALL_GROUP_T , &info);
-	info.group = 29;
-	printf("ioctl29 first %d\n", ret);
-	ret = ioctl(fd, IOCTL_INSTALL_GROUP_T , &info);
-	printf("ioctl29 second ret %d\n", ret);
-	fd = open("/dev/synch/GROUP_MESSAGE_MANAGER29", O_RDONLY);
+	int fd;
+	int ret;
+	char * message;
+	info.group = 2;
+	fd = open_group(&info);
 	if(fd<0){
-		printf("not opened first \n");
-		return 0;
+		perror("group not opened");
+		return -1;
+	} 
+	printf("fd is %d\n", fd);
+	message = malloc(sizeof(char)*STRING_LEN);
+	sprintf(message, " ");
+	ret = read_message(fd, message, STRING_LEN);
+	if(ret<0){
+		printf("Error in reading");
+		return -1;
 	}
-	char * buf;
-	buf = malloc(sizeof(char)*STRING_LEN);
-	int readen = read(fd, buf, STRING_LEN);
-	printf("read first %s\n", buf);
-	ret = close(fd);
-	printf("before second open, close ret %d\n", ret);
-	fd = open("/dev/synch/GROUP_MESSAGE_MANAGER29", O_RDONLY);
-	if(fd<0){
-		printf("not opened second \n");
-		return 0;
+	printf("%s\n", message);
+	if(message==NULL){
+		perror("mem error");
+		return -1;
 	}
-	printf("before second read\n");
-	readen = read(fd, buf, STRING_LEN);
-	printf("read second %s\n", buf);
-	close(fd);
-	free(buf);
+	sprintf(message, "test msg");
+	ret = write_message(fd, message, STRING_LEN);
+	if(ret<0){
+		perror("Error in writing");
+		return -1;
+	}
+	sprintf(message, " ");
+	ret = read_message(fd, message, STRING_LEN);
+	if(ret<0){
+		printf("Error in reading");
+		return -1;
+	}
+	printf("END %s\n", message);
 	// ioctl(fd, IOCTL_POPULATE, &info);
 	// printf("%s\n", info.payload);
 

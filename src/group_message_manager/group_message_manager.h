@@ -3,11 +3,16 @@
 #include <linux/list.h>
 #include <linux/spinlock.h>
 #include <linux/timekeeping.h>
+// #include "../common.h"
+#include "../thread_manager_spowner/thread_manager_spowner.h"
+
+
+#define QUEUE_EMPTY_MESSAGE "Error: Queue is empty\n"
+
 
 //list that will contain a queue of messages
 struct message_queue {
-    char * message;
-    pid_t tid_sender;
+    thread_message * message;
     ktime_t publishing_time;
     struct list_head list;
 };
@@ -20,13 +25,9 @@ struct sleeping_tid{
 
 
 typedef struct {
-    // message_queue
-    // message_waiting_queue
-    // sleeping_threads_list
-    // reading semaphore
-    // writing semaphore
     unsigned long open_count;
     unsigned long control_number;
+    unsigned long lock_flags;
     rwlock_t lock;
     ktime_t sending_delay;
     struct mutex writing_mutex;
@@ -34,7 +35,6 @@ typedef struct {
     struct message_queue publishing_queue;
     struct sleeping_tid sleeping_tid_list;
 } node_information;
-
 
 
 

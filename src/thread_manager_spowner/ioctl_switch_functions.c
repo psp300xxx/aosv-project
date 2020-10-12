@@ -6,7 +6,7 @@
 #include <linux/string.h>
 #include <linux/fs.h>
 #include "ioctl_switch_functions.h"
-#include "thread_manager_spowner.h"
+// #include "thread_manager_spowner.h"
 #include "../group_message_manager/group_message_manager.h"
 #include <linux/kdev_t.h>
 #include <linux/types.h>
@@ -102,7 +102,6 @@ int  init_new_device(int group)
 	}
 	sprintf(driver_name, DRIVER_NAME_NUMB, group);
 	major_number = register_chrdev(0, driver_name, &file_ops_gmm_origin);
-    printk(KERN_DEBUG "%s major number %d",driver_name, major_number);
 
 	// Dynamically allocate a major_number for the device
 	if (major_number < 0) {
