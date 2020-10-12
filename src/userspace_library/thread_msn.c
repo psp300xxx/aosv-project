@@ -10,7 +10,7 @@
 
 #define SUB_DEVICES "/dev/synch/GROUP_MESSAGE_MANAGER%d"
 
-#define SLEEPING_TIME 100 //0.1 seconds
+#define SLEEPING_TIME 0.1 //0.1 seconds
 
 // this functions tries to open a group, if it exists it returns 
 // a File Descriptor of the file we are operating to.
@@ -40,28 +40,24 @@ int open_group(groupt * group_descriptor){
     sprintf(group_to_open, SUB_DEVICES, group_descriptor->group);
     // Since I have to wait udev creates the symbolic links, I try to do it
     // 10 times before making the operation fail
-    tries = 200;
+    tries = 10;
     while(tries>=0){
         group_fd = open(group_to_open, O_RDWR);
-        if(fd<0){
-            printf("trying, missing %d\n", tries);
-            sleep(SLEEPING_TIME);
+        if(group_fd>0){
+            goto end;
         }
-        else{
-            free(group_to_open);
-            return group_fd;
-        }
+        sleep(SLEEPING_TIME);
         tries--;
     }
+end:
     free(group_to_open);
-    return -1;
+    return group_fd;
 }
 
 // tries to write a message into the group managed by the given file descriptor
 // I assume message has been already allocated
 int write_message(int file_descriptor, char * message, int max_length){
     int ret;
-    printf("Writing on %d \nmessage %s\n", file_descriptor, message);
     ret = write(file_descriptor,message, max_length);
     return ret;
 }
