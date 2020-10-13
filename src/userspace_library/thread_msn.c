@@ -40,7 +40,7 @@ int open_group(groupt * group_descriptor){
     sprintf(group_to_open, SUB_DEVICES, group_descriptor->group);
     // Since I have to wait udev creates the symbolic links, I try to do it
     // 10 times before making the operation fail
-    tries = 10;
+    tries = 100;
     while(tries>=0){
         group_fd = open(group_to_open, O_RDWR);
         if(group_fd>0){
@@ -67,4 +67,25 @@ int read_message(int file_descriptor, char * buffer, int max_length){
     int ret;
     ret = read(file_descriptor,buffer, max_length);
     return ret;
+}
+
+long set_message_delay(int file_descriptor, long new_delay){
+    long ret;
+    ret = ioctl(file_descriptor,IOCTL_GMM_SET_DELAY, new_delay);
+    return ret;
+}
+
+// sets the thread having tid as gettid() in sleeping mode on the group managed by the device
+// describer by the file descriptor
+int sleep_tid(int file_descriptor, int tid){
+    long ret;
+    ret = ioctl(file_descriptor,IOCTL_GMM_SLEEP_TID, tid);
+    return ret;
+}
+
+// As the previous func, but in reverse
+int awake_tids(int file_descriptor){
+    long ret;
+    ret = ioctl(file_descriptor,IOCTL_GMM_AWAKE_TIDS);
+    return ret;  
 }

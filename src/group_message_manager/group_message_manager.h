@@ -31,9 +31,12 @@ typedef struct {
     rwlock_t lock;
     ktime_t sending_delay;
     struct mutex writing_mutex;
+    int msg_in_delivering;
+    int msg_in_publishing;
     struct message_queue delivering_queue;
     struct message_queue publishing_queue;
     struct sleeping_tid sleeping_tid_list;
+    int number_of_sleeping_tid;
 } node_information;
 
 
@@ -49,5 +52,13 @@ ssize_t gmm_write(struct file * file, const char __user * buffer, size_t lenght,
 
 int gmm_release(struct inode * inode, struct file * filp);
 
+long gmm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
+
 extern struct file_operations file_ops_gmm_origin;
+
+// // IOCTL INFORMATIONS
+
+// #define GMM_IOC_MAGIC 'R'
+
+// #define IOCTL_GMM_SET_DELAY _IOW(GMM_IOC_MAGIC, 1, long * )
 

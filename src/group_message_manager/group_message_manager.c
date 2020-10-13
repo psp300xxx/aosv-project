@@ -14,15 +14,16 @@
 
 static int table_initialized = 0;
 static DEFINE_HASHTABLE(hash_table, 16);
-node_information * get_device_data(dev_t i_ino);
+// node_information * get_device_data(dev_t i_ino);
+int is_in_sleeping_tids(int tid, node_information * node_info);
+node_information * create_node_info(void);
 struct h_node {
     void * data;
     struct hlist_node node_info;
 };
 
-node_information * create_node_info(void);
 
-node_information * create_node_info(){
+inline node_information * create_node_info(){
     node_information * node_info;
     node_info = kmalloc(sizeof(node_information), GFP_KERNEL);
     if(node_info==NULL){
@@ -33,6 +34,9 @@ node_information * create_node_info(){
     INIT_LIST_HEAD(&node_info->delivering_queue.list);
     INIT_LIST_HEAD(&node_info->publishing_queue.list);
     INIT_LIST_HEAD(&node_info->sleeping_tid_list.list);
+    node_info->msg_in_delivering = 0;
+    node_info->msg_in_publishing = 0;
+    node_info ->number_of_sleeping_tid = 0;
     node_info -> open_count = 0;
     return node_info;
 }
@@ -53,6 +57,16 @@ node_information * get_device_data(dev_t i_ino){
         }
     }
     return 0;
+}
+
+int is_in_sleeping_tids(int tid, node_information * node_info){
+        struct sleeping_tid * sleeper;
+        list_for_each_entry(sleeper, &node_info->sleeping_tid_list.list, list){
+            if(sleeper->tid == tid){
+                return 1;
+            }
+        }
+        return 0;
 }
 
 
@@ -95,35 +109,113 @@ void destroy_map(){
 
 }
 
-inline void publish_message_from_publishing_queue(node_information * node_info,struct message_queue * msg){
-    list_del(&msg->list);
-    list_add_tail(&node_info->delivering_queue.list, &msg->list);
+inline void publish_message_from_publishing_queue(node_information * node_info,struct message_queue ** msg, int length){
+    int i;
+    i=0;
+    for (; i<length; i++){
+        list_del(&msg[i]->list);
+        list_add_tail(&msg[i]->list, &node_info->delivering_queue.list);
+    }
+    node_info -> msg_in_publishing -= length;
+    node_info -> msg_in_delivering += length;
+}
+
+long gmm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
+    long ret;
+    long delay;
+    node_information * node_info;
+    struct sleeping_tid * sleeper;
+    struct sleeping_tid ** sleepers_ptrs;
+    int count = 0;
+    ret = 0;
+	switch (cmd) {
+		case IOCTL_GMM_SET_DELAY:
+            delay = arg;
+			// copy_from_user(info, (long *) arg, sizeof(long));
+            node_info = filp->private_data;
+			node_info -> sending_delay = delay;
+			goto out;
+        case IOCTL_GMM_SLEEP_TID:
+            node_info = filp -> private_data;
+            sleeper = kmalloc(sizeof(struct sleeping_tid), GFP_KERNEL);
+            if(sleeper==NULL){
+                ret = -ENOMEM;
+                goto out;
+            }
+            sleeper -> tid = arg;
+            list_add_tail(&sleeper->list, &node_info->sleeping_tid_list.list);   
+            node_info->number_of_sleeping_tid ++;
+            goto out;
+        case IOCTL_GMM_AWAKE_TIDS:
+            node_info = filp -> private_data;
+            // I look for the current entry in sleeping threads.
+            sleepers_ptrs = vmalloc(sizeof(struct sleeping_tid *)*(node_info->number_of_sleeping_tid));
+            if(sleepers_ptrs==NULL){
+                ret = -ENOMEM;
+                goto out;
+            }
+            list_for_each_entry(sleeper, &node_info->sleeping_tid_list.list, list){
+                sleepers_ptrs[count++] = sleeper;
+            }
+            for( ; count>0 ; count--){
+                list_del(&sleepers_ptrs[count-1]->list);
+            }
+            node_info->number_of_sleeping_tid = 0;
+            vfree(sleepers_ptrs);
+            goto out;	
+	}
+    out:
+	return ret;
+}
+
+inline void print_messages(struct message_queue ** msgs, int length){
+    int i;
+    i=0;
+    for( ;  i < length ; i++ ){
+        printk(KERN_ALERT "msg is %s, pub time is %d", msgs[i]->message, msgs[i]->publishing_time);
+    }
 }
 
 
 ssize_t gmm_read(struct file * file, char * buffer, size_t lenght, loff_t * offset){
     struct message_queue * iter;
+    struct message_queue ** current_iter;
+    int count;
     ktime_t current_time;
     char * err_msg;
     int ret;
     node_information * node_info;
     node_info = file->private_data;
-    printk(KERN_ALERT "reading");
+    if ( is_in_sleeping_tids(current->pid, node_info) ){
+        printk(KERN_ALERT "Thread %d is sleeping", current->pid);
+        return 0;
+    }
     read_lock_irqsave(&node_info->lock,node_info->lock_flags);
     current_time = ktime_get_boottime();
     // at first I publish the messages in publishing queue having the rights to be published
+    iter =NULL;
+    current_iter = vmalloc(sizeof(struct message_queue *)*(node_info->msg_in_publishing));
+    count=0;
+    if(current_iter==NULL){
+        return -ENOMEM;
+    }
+    printk(KERN_ALERT "READING");
     list_for_each_entry(iter, &node_info->publishing_queue.list, list){
-			if(iter->publishing_time <= current_time){
-					publish_message_from_publishing_queue(node_info, iter);
+			if(iter->publishing_time >0 && iter->publishing_time <= current_time && !is_in_sleeping_tids(iter->message->sender, node_info)){
+                    current_iter[count++] = iter;
 			}
 	}
+    // print_messages(current_iter, count);
+    publish_message_from_publishing_queue(node_info, current_iter, count);
     // I deliver the next message to the user
+    vfree(current_iter);
     if( !list_empty(&node_info->delivering_queue.list) ){
         iter = list_first_entry(&node_info->delivering_queue.list, struct message_queue, list);
         // list_first_entry(&node_info->delivering_queue.list, iter, list);
-        list_del(&iter->list);
         ret = strlen(iter->message->message);
         copy_to_user(buffer, iter->message->message, ret);
+        list_del(&iter->list);
+        node_info -> msg_in_delivering = node_info->msg_in_delivering -1;
         goto end;
     }
     else {
@@ -144,12 +236,17 @@ ssize_t gmm_read(struct file * file, char * buffer, size_t lenght, loff_t * offs
 }
 
 ssize_t gmm_write(struct file * file, const char __user * buffer, size_t lenght, loff_t * offset ){
-    node_information * node_info = file->private_data;
+    node_information * node_info;
     ktime_t current_time;
     ktime_t sending_time;
     char * msg; 
     struct message_queue * queue;
     thread_message * thread_msg;
+    node_info = file->private_data;
+    if ( is_in_sleeping_tids(current->pid, node_info) ){
+        printk(KERN_ALERT "Thread %d is sleeping", current->pid);
+        return 0;
+    }
     write_lock_irqsave(&node_info->lock,node_info->lock_flags);
     thread_msg = kmalloc(sizeof(thread_message), GFP_KERNEL);
     msg = kmalloc(sizeof(char)*MESSAGE_LENGTH, GFP_KERNEL);
@@ -166,6 +263,7 @@ ssize_t gmm_write(struct file * file, const char __user * buffer, size_t lenght,
         queue -> message = thread_msg;
         queue -> publishing_time = sending_time;
         list_add_tail( &(queue->list), &(node_info->delivering_queue.list) );
+        node_info->msg_in_delivering = node_info->msg_in_delivering+1;
     }
     else {
         // pushing into publishing queue
@@ -176,9 +274,8 @@ ssize_t gmm_write(struct file * file, const char __user * buffer, size_t lenght,
         sprintf(thread_msg->message, "%s", msg);
         queue -> message = thread_msg;
         queue -> publishing_time = sending_time;
-        printk(KERN_ALERT "IFNDWO");
         list_add_tail( &(queue->list), &(node_info->publishing_queue.list) );
-        printk(KERN_ALERT "fsfsw");
+        node_info -> msg_in_publishing = node_info->msg_in_publishing + 1;
     }
     kfree(msg);
     write_unlock_irqrestore(&node_info->lock,node_info->lock_flags);
@@ -191,6 +288,8 @@ struct file_operations file_ops_gmm_origin = {
     .read= gmm_read,
     .write= gmm_write,
     .release= gmm_release,
+    .unlocked_ioctl= gmm_ioctl,
+	.compat_ioctl= gmm_ioctl,
 	// unlocked_ioctl: mydev_ioctl,
 	// compat_ioctl: mydev_ioctl,
 	// release: mydev_release
