@@ -31,6 +31,7 @@ inline node_information * create_node_info(){
     }
     node_info -> control_number = CONTROL_NUMBER;
     rwlock_init(&node_info->lock);
+    rwlock_init(&node_info->sleeping_tid_lock);
     INIT_LIST_HEAD(&node_info->delivering_queue.list);
     INIT_LIST_HEAD(&node_info->publishing_queue.list);
     INIT_LIST_HEAD(&node_info->sleeping_tid_list.list);
@@ -61,11 +62,14 @@ node_information * get_device_data(dev_t i_ino){
 
 int is_in_sleeping_tids(int tid, node_information * node_info){
         struct sleeping_tid * sleeper;
+        read_lock_irqsave(&node_info->sleeping_tid_lock, node_info->sleeping_lock_flags);
         list_for_each_entry(sleeper, &node_info->sleeping_tid_list.list, list){
             if(sleeper->tid == tid){
+                read_unlock_irqrestore(&node_info->sleeping_tid_lock, node_info->sleeping_lock_flags);
                 return 1;
             }
         }
+        read_unlock_irqrestore(&node_info->sleeping_tid_lock, node_info->sleeping_lock_flags);
         return 0;
 }
 
@@ -137,6 +141,7 @@ long gmm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 			goto out;
         case IOCTL_GMM_SLEEP_TID:
             node_info = filp -> private_data;
+            write_lock_irqsave(&node_info->sleeping_tid_lock,node_info->sleeping_lock_flags);
             sleeper = kmalloc(sizeof(struct sleeping_tid), GFP_KERNEL);
             if(sleeper==NULL){
                 ret = -ENOMEM;
@@ -145,9 +150,11 @@ long gmm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
             sleeper -> tid = arg;
             list_add_tail(&sleeper->list, &node_info->sleeping_tid_list.list);   
             node_info->number_of_sleeping_tid ++;
+            write_unlock_irqrestore(&node_info->sleeping_tid_lock, node_info->sleeping_lock_flags);
             goto out;
         case IOCTL_GMM_AWAKE_TIDS:
             node_info = filp -> private_data;
+            write_lock_irqsave(&node_info->sleeping_tid_lock,node_info->sleeping_lock_flags);
             // I look for the current entry in sleeping threads.
             sleepers_ptrs = vmalloc(sizeof(struct sleeping_tid *)*(node_info->number_of_sleeping_tid));
             if(sleepers_ptrs==NULL){
@@ -162,6 +169,7 @@ long gmm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
             }
             node_info->number_of_sleeping_tid = 0;
             vfree(sleepers_ptrs);
+            write_unlock_irqrestore(&node_info->sleeping_tid_lock, node_info->sleeping_lock_flags);
             goto out;	
 	}
     out:
@@ -176,11 +184,44 @@ inline void print_messages(struct message_queue ** msgs, int length){
     }
 }
 
+inline struct message_queue * get_minimum_message(node_information * node_info){
+    struct message_queue * curr;
+    struct message_queue * min;
+    curr = NULL;
+    min = NULL;
+    list_for_each_entry(curr, &node_info->publishing_queue.list, list){
+			if(curr->publishing_time >0 && curr->publishing_time <= ktime_get_boottime()){
+                    if (min==NULL){
+                        min = curr;
+                    }
+                    else {
+                        if(curr->publishing_time < min->publishing_time){
+                            min = curr;
+                        }
+                    }
+			}
+	}
+    return min; 
+}
+
+int gmm_flush (struct file * filp, fl_owner_t id){
+    node_information * node_info;
+    struct message_queue * curr;
+    node_info = filp->private_data;
+    read_lock_irqsave(&node_info->lock, node_info->lock_flags);
+    while( !list_empty(&node_info->publishing_queue.list) ){
+        curr = get_minimum_message(node_info);
+        list_del(&curr->list);
+        list_add_tail(&curr->list, &node_info->delivering_queue.list);
+        node_info->msg_in_delivering++;
+        node_info->msg_in_publishing--;
+    }
+    read_unlock_irqrestore(&node_info->lock,node_info->lock_flags);
+}
+
 
 ssize_t gmm_read(struct file * file, char * buffer, size_t lenght, loff_t * offset){
     struct message_queue * iter;
-    struct message_queue ** current_iter;
-    int count;
     ktime_t current_time;
     char * err_msg;
     int ret;
@@ -194,27 +235,20 @@ ssize_t gmm_read(struct file * file, char * buffer, size_t lenght, loff_t * offs
     current_time = ktime_get_boottime();
     // at first I publish the messages in publishing queue having the rights to be published
     iter =NULL;
-    current_iter = vmalloc(sizeof(struct message_queue *)*(node_info->msg_in_publishing));
-    count=0;
-    if(current_iter==NULL){
-        return -ENOMEM;
-    }
     printk(KERN_ALERT "READING");
-    list_for_each_entry(iter, &node_info->publishing_queue.list, list){
-			if(iter->publishing_time >0 && iter->publishing_time <= current_time && !is_in_sleeping_tids(iter->message->sender, node_info)){
-                    current_iter[count++] = iter;
-			}
-	}
+    iter = get_minimum_message(node_info);
+    list_del(&iter->list);
+    list_add_tail(&iter->list, &node_info->delivering_queue.list);
     // print_messages(current_iter, count);
-    publish_message_from_publishing_queue(node_info, current_iter, count);
     // I deliver the next message to the user
-    vfree(current_iter);
     if( !list_empty(&node_info->delivering_queue.list) ){
         iter = list_first_entry(&node_info->delivering_queue.list, struct message_queue, list);
         // list_first_entry(&node_info->delivering_queue.list, iter, list);
         ret = strlen(iter->message->message);
         copy_to_user(buffer, iter->message->message, ret);
         list_del(&iter->list);
+        kfree(iter->message);
+        kfree(iter);
         node_info -> msg_in_delivering = node_info->msg_in_delivering -1;
         goto end;
     }
@@ -290,6 +324,7 @@ struct file_operations file_ops_gmm_origin = {
     .release= gmm_release,
     .unlocked_ioctl= gmm_ioctl,
 	.compat_ioctl= gmm_ioctl,
+    .flush = gmm_flush,
 	// unlocked_ioctl: mydev_ioctl,
 	// compat_ioctl: mydev_ioctl,
 	// release: mydev_release

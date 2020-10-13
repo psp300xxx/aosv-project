@@ -28,7 +28,7 @@ int main(void) {
 	// 1 sec
 	delay = 1000;
 	ret_ioctl = set_message_delay(fd, delay);
-	ret_ioctl = sleep_tid(fd, gettid());
+	// ret_ioctl = sleep_tid(fd, gettid());
 	message = malloc(sizeof(char)*STRING_LEN);
 	sprintf(message, "Ciao mundo!");
 	ret = write_message(fd, message, strlen("Ciao mundo!"));

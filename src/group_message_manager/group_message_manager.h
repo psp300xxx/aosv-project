@@ -36,7 +36,9 @@ typedef struct {
     struct message_queue delivering_queue;
     struct message_queue publishing_queue;
     struct sleeping_tid sleeping_tid_list;
+    rwlock_t sleeping_tid_lock;
     int number_of_sleeping_tid;
+    unsigned long sleeping_lock_flags;
 } node_information;
 
 
@@ -51,6 +53,8 @@ ssize_t gmm_read(struct file * file, char * buffer, size_t lenght, loff_t * offs
 ssize_t gmm_write(struct file * file, const char __user * buffer, size_t lenght, loff_t * offset );
 
 int gmm_release(struct inode * inode, struct file * filp);
+
+int gmm_flush (struct file *, fl_owner_t id);
 
 long gmm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 
