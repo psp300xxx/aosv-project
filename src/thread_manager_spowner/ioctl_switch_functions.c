@@ -48,6 +48,7 @@ long set_new_driver( int group ){
     struct devices_created * iter;
 	if(list_devices_created){
 		list_for_each_entry(iter, &devices.list, list){
+				printk(KERN_ALERT "group %d", iter->group);
 				if(iter->group == group){
 					return 0;
 				}

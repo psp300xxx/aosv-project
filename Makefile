@@ -11,8 +11,12 @@ LINUX_KERNEL_PATH = /lib/modules/$(LINUX_KERNEL)/build/
 all:
 			make -C $(LINUX_KERNEL_PATH) M=$(CURRENT_PATH) modules
 			gcc $(CURRENT_PATH)/src/user_space_test_app/main.c $(CURRENT_PATH)/src/userspace_library/thread_msn.c -o $(CURRENT_PATH)/main.out
+			gcc $(CURRENT_PATH)/src/user_space_test_app/single_thread_fifo_test.c $(CURRENT_PATH)/src/userspace_library/thread_msn.c -o $(CURRENT_PATH)/tests/single_thread_fifo_test.out
+			gcc $(CURRENT_PATH)/src/user_space_test_app/two_threads.c $(CURRENT_PATH)/src/userspace_library/thread_msn.c -o $(CURRENT_PATH)/tests/two_threads.out -lpthread
+
 
 clean:
 			make -C $(LINUX_KERNEL_PATH) M=$(CURRENT_PATH) clean
 			rm main.out
+			rm  $(CURRENT_PATH)/tests/*
 

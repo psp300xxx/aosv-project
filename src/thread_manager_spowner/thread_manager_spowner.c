@@ -23,7 +23,11 @@ int mydev_open(struct inode *inode, struct file *filp);
 int mydev_release(struct inode *inode, struct file *filp);
 struct class * dev_cl_group =NULL;
 int major_secondary = -1;
+static  rwlock_t ldm_lock;
+
 // EXPORT_SYMBOL(dev_cl_group);
+
+// static DEFINE_MUTEX(ldm_mutex);
 
 
 
@@ -45,7 +49,7 @@ struct file_operations fops = {
 };
 
 
-
+unsigned long lock_flags;
 
 long mydev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
@@ -53,8 +57,10 @@ long mydev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	groupt info;
 	switch (cmd) {
 		case IOCTL_INSTALL_GROUP_T:
+			write_lock_irqsave(&ldm_lock,lock_flags);
 			copy_from_user(&info, (groupt *) arg, sizeof(groupt));
 			ret = set_new_driver(info.group);
+			write_unlock_irqrestore(&ldm_lock, lock_flags);
 			goto out;
 	}
 
@@ -85,7 +91,6 @@ int mydev_open(struct inode *inode, struct file *filp) {
 
 int mydev_release(struct inode *inode, struct file *filp)
 {
-	mutex_unlock(&mydev_mutex);
 
 	return 0;
 }
@@ -95,7 +100,7 @@ static int __init mydev_init(void)
 {
 	// hash_init(hash_table);
 	int err;
-
+	rwlock_init(&ldm_lock);
 	major = register_chrdev(0, DRIVER_NAME, &fops);
 	// Dynamically allocate a major for the device
 	if (major < 0) {

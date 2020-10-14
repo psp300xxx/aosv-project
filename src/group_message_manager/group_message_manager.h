@@ -29,6 +29,8 @@ typedef struct {
     unsigned long control_number;
     unsigned long lock_flags;
     rwlock_t lock;
+    rwlock_t publishing_lock;
+    unsigned long publishing_lock_flags;
     ktime_t sending_delay;
     struct mutex writing_mutex;
     int msg_in_delivering;
