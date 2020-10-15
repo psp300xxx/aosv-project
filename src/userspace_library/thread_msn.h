@@ -23,3 +23,5 @@ int sleep_tid(int file_descriptor, int tid);
 
 // As the previous func, but in reverse
 int awake_tids(int file_descriptor);
+
+int close_group(int file_descriptor);

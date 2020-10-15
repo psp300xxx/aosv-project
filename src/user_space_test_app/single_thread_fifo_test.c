@@ -53,7 +53,6 @@ int main(void){
         if(ret<0){
             return -1;
         }
-        sleep(0.2);
     }
     int NUMBER_PREDICTED_VALUES = 0;
     // I read again the messages
@@ -71,6 +70,7 @@ int main(void){
         }
     }
     printf("Predicted %d, Elements %d\n", NUMBER_PREDICTED_VALUES, number_of_elements);
+    close_group(fd);
     free(array);
     free(group_descriptor);
 }

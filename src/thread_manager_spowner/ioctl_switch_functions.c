@@ -5,7 +5,9 @@
 #include <linux/uaccess.h>
 #include <linux/string.h>
 #include <linux/fs.h>
+#include <linux/spinlock.h>
 #include "ioctl_switch_functions.h"
+
 // #include "thread_manager_spowner.h"
 #include "../group_message_manager/group_message_manager.h"
 #include <linux/kdev_t.h>
@@ -22,6 +24,10 @@ static dev_t  current_devt = 1;
 static int number_devices = 0;
 struct devices_created devices;
 int list_devices_created =0;
+
+rwlock_t ldm_lock;
+unsigned long lock_flags;
+static int lock_initialized = 0;
 
 int current_open(struct inode *inode, struct file *filp);
 
@@ -46,14 +52,22 @@ void unregister_and_destroy_all_devices(){
 long set_new_driver( int group ){
     int ret;
     struct devices_created * iter;
+	if(!lock_initialized){
+		rwlock_init(&ldm_lock);
+		lock_initialized=1;
+	}
 	if(list_devices_created){
+		read_lock_irqsave(&ldm_lock, lock_flags);
 		list_for_each_entry(iter, &devices.list, list){
 				printk(KERN_ALERT "group %d", iter->group);
 				if(iter->group == group){
+					read_unlock_irqrestore(&ldm_lock, lock_flags);
 					return 0;
 				}
 		}
+		read_unlock_irqrestore(&ldm_lock, lock_flags);
 	}
+	write_lock_irqsave(&ldm_lock, lock_flags);
     ret = init_new_device(group);
     if (!ret){
         if (!list_devices_created){
@@ -62,12 +76,14 @@ long set_new_driver( int group ){
         }
         ret = add_group_list(&devices, group, current_devt, major_number);
 		if(ret<0){
+			write_unlock_irqrestore(&ldm_lock, lock_flags);
 			return -1;
 		}
 		number_devices++;
-		printk(KERN_DEBUG "number devices %d ", number_devices);
+		write_unlock_irqrestore(&ldm_lock, lock_flags);
         return 0;
     }
+	write_unlock_irqrestore(&ldm_lock, lock_flags);
     return -1;
 }
 

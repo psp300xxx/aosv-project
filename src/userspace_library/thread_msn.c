@@ -30,8 +30,10 @@ int open_group(groupt * group_descriptor){
     ret = ioctl(fd, IOCTL_INSTALL_GROUP_T , group_descriptor);
     if (ret<0){
         perror("Error installing new group");
+        close(fd);
 		return -1;
     }
+    close(fd);
     group_to_open = malloc(sizeof(char)* strlen(SUB_DEVICES)*2);
     if(group_to_open==NULL){
         perror("mem error");
@@ -73,6 +75,10 @@ long set_message_delay(int file_descriptor, long new_delay){
     long ret;
     ret = ioctl(file_descriptor,IOCTL_GMM_SET_DELAY, new_delay);
     return ret;
+}
+
+int close_group(int file_descriptor){
+    close(file_descriptor);
 }
 
 // sets the thread having tid as gettid() in sleeping mode on the group managed by the device

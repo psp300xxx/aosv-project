@@ -8,13 +8,15 @@
 #include <sys/types.h>
 #include "../userspace_library/thread_msn.h"
 #include <pthread.h>
+#include <stdatomic.h>
 
 
 const int max_array_elements = 1000;
 
-const int NUMBER_OF_THREADS = 10;
+const int NUMBER_OF_THREADS = 1000;
 
 const int number_of_elements = 100;
+
 
 #define MAX_STRING_lEN 20
 
@@ -32,17 +34,20 @@ void * read_and_write(groupt * group_desc){
     message = malloc(sizeof(char)*MAX_STRING_lEN);
     if(message==NULL){
         perror("memory");
+        group_desc ->open_times ++;
         return NULL;
     }
     array = malloc(sizeof(char *)*number_of_elements);
     if(array==NULL){
         perror("memory");
+        group_desc ->open_times ++;
         return NULL;
     }
     for(int i =0; i<number_of_elements;i++){
         array[i] = malloc(sizeof(char)*MAX_STRING_lEN);
         if(array[i]==NULL){
             perror("memory");
+            group_desc ->open_times ++;
             return NULL;
         }
         sprintf(array[i], "From tid %d, %d\n", gettid(), i);
@@ -57,6 +62,8 @@ void * read_and_write(groupt * group_desc){
         ret = write_message(fd, array[i], MAX_STRING_lEN);
         if(ret<0){
             perror("writing");
+            group_desc ->open_times ++;
+            close_group(fd);
             return NULL;
         }
         sleep(0.2);
@@ -65,11 +72,16 @@ void * read_and_write(groupt * group_desc){
         ret = read_message(fd, message, MAX_STRING_lEN);
         if(ret<0){
             perror("reading");
+            group_desc ->open_times ++;
+            close_group(fd);
             return NULL;
         }
         printf("thread %d read %s\n", gettid(), message);
     }
+    close_group(fd);
     // free data
+    group_desc ->open_times ++;
+    printf("free data \n");
     free(message);
     for(int i =0 ; i<number_of_elements; i++){
         free(array[i]);
@@ -106,9 +118,9 @@ int main(void){
         }
     }
 
-    int finished =0;
-    while(!finished){
-        sleep(10);
+    while(group_descriptor->open_times<NUMBER_OF_THREADS){
+        printf("%d threads have finished \n", group_descriptor->open_times);
+        sleep(0.2);
     }
     free(group_descriptor);
     free(thread_id);

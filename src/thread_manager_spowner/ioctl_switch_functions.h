@@ -13,6 +13,8 @@ struct devices_created {
     struct list_head list;
 };
 
+
+
 void unregister_and_destroy_all_devices(void);
 
 int add_group_list(struct devices_created * devs, int group, dev_t new_devt, int major);

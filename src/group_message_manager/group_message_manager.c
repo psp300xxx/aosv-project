@@ -222,6 +222,7 @@ int gmm_flush (struct file * filp, fl_owner_t id){
     }
     write_unlock_irqrestore(&node_info->lock,node_info->lock_flags);
     write_unlock_irqrestore(&node_info->publishing_lock,node_info->publishing_lock_flags);
+    return 0;
 }
 
 
@@ -234,7 +235,7 @@ ssize_t gmm_read(struct file * file, char * buffer, size_t lenght, loff_t * offs
     node_info = file->private_data;
     if ( is_in_sleeping_tids(current->pid, node_info) ){
         printk(KERN_ALERT "Thread %d is sleeping", current->pid);
-        return 0;
+        return -EACCESS;
     }
     current_time = ktime_get_boottime();
     // at first I publish the messages in publishing queue having the rights to be published
@@ -289,7 +290,7 @@ ssize_t gmm_write(struct file * file, const char __user * buffer, size_t lenght,
     node_info = file->private_data;
     if ( is_in_sleeping_tids(current->pid, node_info) ){
         printk(KERN_ALERT "Thread %d is sleeping", current->pid);
-        return 0;
+        return -EACCESS;
     }
     printk(KERN_ALERT "WRITING");
     thread_msg = kmalloc(sizeof(thread_message), GFP_KERNEL);
