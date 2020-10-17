@@ -12,6 +12,7 @@
 
 #define CONTROL_NUMBER 633443
 
+
 static int table_initialized = 0;
 static DEFINE_HASHTABLE(hash_table, 16);
 // node_information * get_device_data(dev_t i_ino);
@@ -30,9 +31,9 @@ inline node_information * create_node_info(){
         return NULL;
     }
     node_info -> control_number = CONTROL_NUMBER;
-    rwlock_init(&node_info->lock);
-    rwlock_init(&node_info->sleeping_tid_lock);
-    rwlock_init(&node_info->publishing_lock);
+    init_rwsem(&node_info->delivering_semaphore);
+    init_rwsem(&node_info->publishing_semaphore);
+    init_rwsem(&node_info->sleeping_tid_semaphore);
     INIT_LIST_HEAD(&node_info->delivering_queue.list);
     INIT_LIST_HEAD(&node_info->publishing_queue.list);
     INIT_LIST_HEAD(&node_info->sleeping_tid_list.list);
@@ -63,14 +64,14 @@ node_information * get_device_data(dev_t i_ino){
 
 int is_in_sleeping_tids(int tid, node_information * node_info){
         struct sleeping_tid * sleeper;
-        read_lock_irqsave(&node_info->sleeping_tid_lock, node_info->sleeping_lock_flags);
+        down_read(&node_info->sleeping_tid_semaphore);
         list_for_each_entry(sleeper, &node_info->sleeping_tid_list.list, list){
             if(sleeper->tid == tid){
-                read_unlock_irqrestore(&node_info->sleeping_tid_lock, node_info->sleeping_lock_flags);
+                up_read(&node_info->sleeping_tid_semaphore);
                 return 1;
             }
         }
-        read_unlock_irqrestore(&node_info->sleeping_tid_lock, node_info->sleeping_lock_flags);
+        up_read(&node_info->sleeping_tid_semaphore);
         return 0;
 }
 
@@ -105,7 +106,6 @@ int gmm_open(struct inode *inode, struct file *filp){
 }
 
 int gmm_release(struct inode * inode, struct file * filp){
-    printk(KERN_ALERT "CLOSING\n");
     return 0;
 }
 
@@ -141,7 +141,8 @@ long gmm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
 			goto out;
         case IOCTL_GMM_SLEEP_TID:
             node_info = filp -> private_data;
-            write_lock_irqsave(&node_info->sleeping_tid_lock,node_info->sleeping_lock_flags);
+            down_write(&node_info->sleeping_tid_semaphore);
+            // write_lock_irqsave(&node_info->sleeping_tid_lock,node_info->sleeping_lock_flags);
             sleeper = kmalloc(sizeof(struct sleeping_tid), GFP_KERNEL);
             if(sleeper==NULL){
                 ret = -ENOMEM;
@@ -150,11 +151,12 @@ long gmm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
             sleeper -> tid = arg;
             list_add_tail(&sleeper->list, &node_info->sleeping_tid_list.list);   
             node_info->number_of_sleeping_tid ++;
-            write_unlock_irqrestore(&node_info->sleeping_tid_lock, node_info->sleeping_lock_flags);
+            // write_unlock_irqrestore(&node_info->sleeping_tid_lock, node_info->sleeping_lock_flags);
+            up_write(&node_info->sleeping_tid_semaphore);
             goto out;
         case IOCTL_GMM_AWAKE_TIDS:
             node_info = filp -> private_data;
-            write_lock_irqsave(&node_info->sleeping_tid_lock,node_info->sleeping_lock_flags);
+            down_write(&node_info->sleeping_tid_semaphore);
             // I look for the current entry in sleeping threads.
             sleepers_ptrs = vmalloc(sizeof(struct sleeping_tid *)*(node_info->number_of_sleeping_tid));
             if(sleepers_ptrs==NULL){
@@ -169,30 +171,24 @@ long gmm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
             }
             node_info->number_of_sleeping_tid = 0;
             vfree(sleepers_ptrs);
-            write_unlock_irqrestore(&node_info->sleeping_tid_lock, node_info->sleeping_lock_flags);
+            // write_unlock_irqrestore(&node_info->sleeping_tid_lock, node_info->sleeping_lock_flags);
+            up_write(&node_info->sleeping_tid_semaphore);
             goto out;	
 	}
     out:
 	return ret;
 }
 
-inline void print_messages(struct message_queue ** msgs, int length){
-    int i;
-    i=0;
-    for( ;  i < length ; i++ ){
-        printk(KERN_ALERT "msg is %s, pub time is %d", msgs[i]->message, msgs[i]->publishing_time);
-    }
-}
 
 inline struct message_queue * get_minimum_message(node_information * node_info){
-    read_lock_irqsave(&node_info->publishing_lock,node_info->publishing_lock_flags);
     struct message_queue * curr;
     struct message_queue * min;
+    // read_lock_irqsave(&node_info->publishing_lock,node_info->publishing_lock_flags);
     curr = NULL;
     min = NULL;
+    down_read(&node_info->publishing_semaphore);
     list_for_each_entry(curr, &node_info->publishing_queue.list, list){
 			if(curr->publishing_time >0 && curr->publishing_time <= ktime_get_boottime()){
-                    printk(curr->message->message);
                     if (min==NULL){
                         min = curr;
                     }
@@ -203,7 +199,8 @@ inline struct message_queue * get_minimum_message(node_information * node_info){
                     }
 			}
 	}
-    read_unlock_irqrestore(&node_info->publishing_lock, node_info->publishing_lock_flags);
+    // read_unlock_irqrestore(&node_info->publishing_lock, node_info->publishing_lock_flags);
+    up_read(&node_info->publishing_semaphore);
     return min; 
 }
 
@@ -211,8 +208,10 @@ int gmm_flush (struct file * filp, fl_owner_t id){
     node_information * node_info;
     struct message_queue * curr;
     node_info = filp->private_data;
-    write_lock_irqsave(&node_info->publishing_lock, node_info->publishing_lock_flags);
-    write_lock_irqsave(&node_info->lock, node_info->lock_flags);
+    // write_lock_irqsave(&node_info->publishing_lock, node_info->publishing_lock_flags);
+    // write_lock_irqsave(&node_info->lock, node_info->lock_flags);
+    down_write(&node_info->publishing_semaphore);
+    down_write(&node_info->delivering_semaphore);
     while( !list_empty(&node_info->publishing_queue.list) ){
         curr = get_minimum_message(node_info);
         list_del(&curr->list);
@@ -220,8 +219,10 @@ int gmm_flush (struct file * filp, fl_owner_t id){
         node_info->msg_in_delivering++;
         node_info->msg_in_publishing--;
     }
-    write_unlock_irqrestore(&node_info->lock,node_info->lock_flags);
-    write_unlock_irqrestore(&node_info->publishing_lock,node_info->publishing_lock_flags);
+    up_write(&node_info->publishing_semaphore);
+    up_write(&node_info->delivering_semaphore);
+    // write_unlock_irqrestore(&node_info->lock,node_info->lock_flags);
+    // write_unlock_irqrestore(&node_info->publishing_lock,node_info->publishing_lock_flags);
     return 0;
 }
 
@@ -229,39 +230,47 @@ int gmm_flush (struct file * filp, fl_owner_t id){
 ssize_t gmm_read(struct file * file, char * buffer, size_t lenght, loff_t * offset){
     struct message_queue * iter;
     ktime_t current_time;
+    int list_is_empty;
     char * err_msg;
     int ret;
     node_information * node_info;
     node_info = file->private_data;
+    if(lenght>bytes_per_message){
+        return -ENOMEM;
+    }
     if ( is_in_sleeping_tids(current->pid, node_info) ){
-        printk(KERN_ALERT "Thread %d is sleeping", current->pid);
-        return -EACCESS;
+        return -EACCES;
     }
     current_time = ktime_get_boottime();
-    // at first I publish the messages in publishing queue having the rights to be published
     iter =NULL;
-    if( !list_empty(&node_info->publishing_queue.list) ){
+    list_is_empty = list_empty(&node_info->publishing_queue.list);
+    if( !list_is_empty ){
         iter = get_minimum_message(node_info);
-        write_lock_irqsave(&node_info->lock,node_info->lock_flags);
-        write_lock_irqsave(&node_info->publishing_lock,node_info->publishing_lock_flags);
+        down_write(&node_info->publishing_semaphore);
+        down_write(&node_info->delivering_semaphore);
         list_del(&iter->list);
         list_add_tail(&iter->list, &node_info->delivering_queue.list);
-        write_unlock_irqrestore(&node_info->lock,node_info->lock_flags);
-        write_unlock_irqrestore(&node_info->publishing_lock,node_info->publishing_lock_flags);
+        node_info->msg_in_publishing--;
+        node_info->msg_in_delivering++;
+        up_write(&node_info->publishing_semaphore);
+        up_write(&node_info->delivering_semaphore);
     }
     // print_messages(current_iter, count);
     // I deliver the next message to the user
-    if( !list_empty(&node_info->delivering_queue.list) ){
-        write_lock_irqsave(&node_info->lock,node_info->lock_flags);
+    // read_lock_irqsave(&node_info->lock, node_info->lock_flags);
+    list_is_empty = list_empty(&node_info->delivering_queue.list);
+    // read_unlock_irqrestore(&node_info->lock, node_info->lock_flags);
+    if( !list_is_empty ){
+        // write_lock_irqsave(&node_info->lock,node_info->lock_flags);
+        down_write(&node_info->delivering_semaphore);
         iter = list_first_entry(&node_info->delivering_queue.list, struct message_queue, list);
-        // list_first_entry(&node_info->delivering_queue.list, iter, list);
-        ret = strlen(iter->message->message);
-        copy_to_user(buffer, iter->message->message, ret);
+        ret = strlen(iter->message->text);
+        copy_to_user(buffer, iter->message->text, ret);
         list_del(&iter->list);
+        vfree(iter->message->text);
         kfree(iter->message);
-        kfree(iter);
-        node_info -> msg_in_delivering = node_info->msg_in_delivering -1;
-        write_unlock_irqrestore(&node_info->lock,node_info->lock_flags);
+        node_info -> msg_in_delivering--;
+        up_write(&node_info->delivering_semaphore);
         goto end;
     }
     else {
@@ -280,55 +289,51 @@ ssize_t gmm_read(struct file * file, char * buffer, size_t lenght, loff_t * offs
         return ret;
 }
 
-ssize_t gmm_write(struct file * file, const char __user * buffer, size_t lenght, loff_t * offset ){
-    node_information * node_info;
-    ktime_t current_time;
-    ktime_t sending_time;
-    char * msg; 
-    struct message_queue * queue;
-    thread_message * thread_msg;
+ssize_t gmm_write(struct file * file, const char __user * buffer, size_t length, loff_t * offset ){
+    int bytes_used;
+    struct message_queue * current_message;
+    node_information* node_info;
+    ktime_t current_time, sending_time;
     node_info = file->private_data;
-    if ( is_in_sleeping_tids(current->pid, node_info) ){
-        printk(KERN_ALERT "Thread %d is sleeping", current->pid);
-        return -EACCESS;
-    }
-    printk(KERN_ALERT "WRITING");
-    thread_msg = kmalloc(sizeof(thread_message), GFP_KERNEL);
-    msg = kmalloc(sizeof(char)*MESSAGE_LENGTH, GFP_KERNEL);
-    queue = kmalloc(sizeof(struct message_queue), GFP_KERNEL);
-    if(thread_msg==NULL || msg == NULL || queue ==NULL){
+    bytes_used = (node_info->msg_in_delivering + node_info->msg_in_publishing)*bytes_per_message;
+    if(length > bytes_per_message || bytes_used>=total_bytes_in_queue){
         return -ENOMEM;
     }
-    if(node_info->sending_delay <= 0){
-        // direct publishing message on delivering queue
-        sending_time = ktime_get_boottime();
-        thread_msg->sender = current->pid;
-        copy_from_user(msg, buffer, lenght);
-        sprintf(thread_msg->message, "%s", msg);
-        queue -> message = thread_msg;
-        queue -> publishing_time = sending_time;
-        write_lock_irqsave(&node_info->lock,node_info->lock_flags);
-        list_add_tail( &(queue->list), &(node_info->delivering_queue.list) );
-        node_info->msg_in_delivering = node_info->msg_in_delivering+1;
-        write_unlock_irqrestore(&node_info->lock,node_info->lock_flags);
-        }
-    else {
-        // pushing into publishing queue
-        current_time = ktime_get_boottime();
-        sending_time = current_time + node_info->sending_delay;
-        thread_msg->sender = current->pid;
-        copy_from_user(msg, buffer, MESSAGE_LENGTH);
-        sprintf(thread_msg->message, "%s", msg);
-        queue -> message = thread_msg;
-        queue -> publishing_time = sending_time;
-        write_lock_irqsave(&node_info->publishing_lock,node_info->publishing_lock_flags);
-        list_add_tail( &(queue->list), &(node_info->publishing_queue.list) );
-        node_info -> msg_in_publishing = node_info->msg_in_publishing + 1;
-        write_unlock_irqrestore(&node_info->publishing_lock,node_info->publishing_lock_flags);
-
+    if( is_in_sleeping_tids(current->pid, node_info) ){
+        return -EACCES;
     }
-    kfree(msg);
-    return 0;
+    if( (current_message = kmalloc(sizeof(struct message_queue), GFP_KERNEL)) == NULL ){
+        return -ENOMEM;
+    }
+    if( ( current_message->message = kmalloc(sizeof(thread_message), GFP_KERNEL) ) == NULL ){
+        return -ENOMEM;
+    }
+    if( ( current_message->message->text = kmalloc(sizeof(char)*bytes_per_message, GFP_KERNEL) ) == NULL ){
+        return -ENOMEM;
+    }
+    if( node_info->sending_delay <=0 ){
+        // direct publish in delivering queue
+        copy_from_user(current_message->message->text, buffer, length);
+        current_message->message->sender = current->pid;
+        down_write(&node_info->delivering_semaphore);
+        list_add_tail( &current_message->list, &node_info->delivering_queue.list );
+        node_info->msg_in_delivering++;
+        // write_unlock_irqrestore(&node_info->lock, node_info->lock_flags);
+        up_write(&node_info->delivering_semaphore);
+        return strlen(current_message->message->text);
+    }
+    else {
+        current_time = ktime_get_boottime();
+        sending_time = current_time + node_info -> sending_delay;
+        current_message -> message->sender = current->pid;
+        copy_from_user(current_message->message->text, buffer, length);
+        current_message->publishing_time = sending_time;
+        down_write(&node_info->publishing_semaphore);
+        list_add_tail( &(current_message->list), &(node_info->publishing_queue.list) );
+        node_info -> msg_in_publishing ++;
+        up_write(&node_info->publishing_semaphore);
+        return length;
+    }
 }
 
 
@@ -344,4 +349,3 @@ struct file_operations file_ops_gmm_origin = {
 	// compat_ioctl: mydev_ioctl,
 	// release: mydev_release
 };
-// EXPORT_SYMBOL(file_ops_gmm_origin);

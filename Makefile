@@ -7,12 +7,14 @@ thread_manager_spowner-objs := ./src/thread_manager_spowner/thread_manager_spown
 
 CURRENT_PATH = $(shell pwd)
 LINUX_KERNEL = $(shell uname -r)
-LINUX_KERNEL_PATH = /lib/modules/$(LINUX_KERNEL)/build/
+LINUX_KERNEL_PATH = /lib/modules/$(shell uname -r)/build/
 all:
 			make -C $(LINUX_KERNEL_PATH) M=$(CURRENT_PATH) modules
 			gcc $(CURRENT_PATH)/src/user_space_test_app/main.c $(CURRENT_PATH)/src/userspace_library/thread_msn.c -o $(CURRENT_PATH)/main.out
 			gcc $(CURRENT_PATH)/src/user_space_test_app/single_thread_fifo_test.c $(CURRENT_PATH)/src/userspace_library/thread_msn.c -o $(CURRENT_PATH)/tests/single_thread_fifo_test.out
-			gcc $(CURRENT_PATH)/src/user_space_test_app/multiple_threads.c $(CURRENT_PATH)/src/userspace_library/thread_msn.c -o $(CURRENT_PATH)/tests/two_threads.out -lpthread
+			gcc $(CURRENT_PATH)/src/user_space_test_app/multiple_threads.c $(CURRENT_PATH)/src/userspace_library/thread_msn.c -o $(CURRENT_PATH)/tests/multiple_threads.out -lpthread
+			gcc $(CURRENT_PATH)/src/user_space_test_app/multiple_thread_multiple_group.c $(CURRENT_PATH)/src/userspace_library/thread_msn.c -o $(CURRENT_PATH)/tests/multiple_thread_multiple_group.out -lpthread
+
 
 
 clean:

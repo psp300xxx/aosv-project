@@ -18,7 +18,7 @@ const int NUMBER_OF_THREADS = 1000;
 const int number_of_elements = 100;
 
 
-#define MAX_STRING_lEN 20
+#define MAX_STRING_lEN 40
 
 void * read_and_write(groupt * group_desc);
 
@@ -26,7 +26,7 @@ void * read_and_write(groupt * group_desc);
 char num_string [MAX_STRING_lEN];
 
 void * read_and_write(groupt * group_desc){
-    printf("ENTERING THREAD %d\n", group_desc->group);
+    printf("ENTERING THREAD %d\n", gettid());
     char ** array;
     int fd;
     int ret;
@@ -55,6 +55,7 @@ void * read_and_write(groupt * group_desc){
     fd = open_group(group_desc);
     if(fd<0){
         perror("opening group");
+        group_desc ->open_times ++;
         return NULL;
     }
     printf("fd is %d\n", fd);
@@ -62,9 +63,7 @@ void * read_and_write(groupt * group_desc){
         ret = write_message(fd, array[i], MAX_STRING_lEN);
         if(ret<0){
             perror("writing");
-            group_desc ->open_times ++;
-            close_group(fd);
-            return NULL;
+            break;
         }
         sleep(0.2);
     }  
@@ -72,16 +71,14 @@ void * read_and_write(groupt * group_desc){
         ret = read_message(fd, message, MAX_STRING_lEN);
         if(ret<0){
             perror("reading");
-            group_desc ->open_times ++;
-            close_group(fd);
-            return NULL;
+            break;
         }
+        sleep(0.2);
         printf("thread %d read %s\n", gettid(), message);
     }
     close_group(fd);
     // free data
     group_desc ->open_times ++;
-    printf("free data \n");
     free(message);
     for(int i =0 ; i<number_of_elements; i++){
         free(array[i]);
@@ -120,7 +117,7 @@ int main(void){
 
     while(group_descriptor->open_times<NUMBER_OF_THREADS){
         printf("%d threads have finished \n", group_descriptor->open_times);
-        sleep(0.2);
+        sleep(1);
     }
     free(group_descriptor);
     free(thread_id);

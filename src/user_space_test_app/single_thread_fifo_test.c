@@ -47,7 +47,7 @@ int main(void){
     }
     // write strings to the group
     for(int i = 0 ; i<number_of_elements; i++){
-        sprintf(num_string, "%dk\0", array[i]);
+        sprintf(num_string, "%dk", array[i]);
         printf("Writing %s\n", num_string);
         ret = write_message(fd, num_string,MAX_STRING_lEN);
         if(ret<0){

@@ -12,5 +12,4 @@
 extern struct class * dev_cl_group ;
 
 
-
 #define IOCTL_INSTALL_GROUP_T 			_IOR(MYDEV_IOC_MAGIC, 1, groupt *)

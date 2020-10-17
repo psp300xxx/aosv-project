@@ -16,27 +16,25 @@ MODULE_DESCRIPTION("ioctl example");
 MODULE_LICENSE("GPL");
 MODULE_VERSION("1.0.0");
 
-// static ssize_t my_read(struct file * file, char __user * buffer, size_t lenght, loff_t * offset);
 long mydev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 int mydev_open(struct inode *inode, struct file *filp);
 int mydev_release(struct inode *inode, struct file *filp);
 struct class * dev_cl_group =NULL;
 int major_secondary = -1;
 
-// EXPORT_SYMBOL(dev_cl_group);
+// Variables to correctly setup/shutdown the pseudo device file
+static int major;
+static struct class *dev_cl = NULL;
+static struct device *device = NULL;
 
-// static DEFINE_MUTEX(ldm_mutex);
 
 
+int bytes_per_message = 100;
+module_param(bytes_per_message, int, S_IRUGO|S_IWUSR);
+int total_bytes_in_queue = 100 * 4000 ;
+module_param(total_bytes_in_queue, int , S_IRUGO|S_IWUSR);
 
-/// Only one process at a time can interact with this mutex
-static DEFINE_MUTEX(mydev_mutex);
-// DEFINE_HASHTABLE(hash_table, 5) ;
 
-// extern struct hlist_head hash_table[1 << (20)];
-
-// DEFINE_HASHTABLE(hash_table, 20);
-// EXPORT_SYMBOL(hash_table);
 
 /// File operations for the module
 struct file_operations fops = {
@@ -65,22 +63,9 @@ long mydev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 
 
-// Variables to correctly setup/shutdown the pseudo device file
-static int major;
-static struct class *dev_cl = NULL;
-static struct device *device = NULL;
-
 
 int mydev_open(struct inode *inode, struct file *filp) {
-
-
-	// if (!mutex_trylock(&mydev_mutex)) {
-	// 	printk(KERN_INFO "%s: Trying to open an already-opened special device file\n", DRIVER_NAME);
-	// 	return -EBUSY;
-	// }
-
 	return 0;
-
 }
 
 

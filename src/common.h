@@ -1,13 +1,16 @@
 // #include <sys/types.h>
-#define MESSAGE_LENGTH 50
 
 typedef struct {
     int group;
     int open_times;
 } groupt;
 
+extern int bytes_per_message;
+
+extern int total_bytes_in_queue;
+
 typedef struct {
-    char message [MESSAGE_LENGTH];
+    char * text;
     int sender;
 } thread_message;
 

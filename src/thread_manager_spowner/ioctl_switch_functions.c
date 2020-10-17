@@ -5,7 +5,7 @@
 #include <linux/uaccess.h>
 #include <linux/string.h>
 #include <linux/fs.h>
-#include <linux/spinlock.h>
+#include <linux/rwsem.h>
 #include "ioctl_switch_functions.h"
 
 // #include "thread_manager_spowner.h"
@@ -25,9 +25,7 @@ static int number_devices = 0;
 struct devices_created devices;
 int list_devices_created =0;
 
-rwlock_t ldm_lock;
-unsigned long lock_flags;
-static int lock_initialized = 0;
+static DECLARE_RWSEM(rw_semaphore);
 
 int current_open(struct inode *inode, struct file *filp);
 
@@ -35,6 +33,9 @@ int current_open(struct inode *inode, struct file *filp);
 void unregister_and_destroy_all_devices(){
 		struct devices_created * iter;
 		char * current_driver_name;
+		if( !list_devices_created ){
+			return;
+		}
 		current_driver_name = kmalloc(sizeof(char)*20,0);
 		list_for_each_entry(iter, &devices.list, list){
 				sprintf(current_driver_name, DRIVER_NAME_NUMB, iter->group);
@@ -52,22 +53,15 @@ void unregister_and_destroy_all_devices(){
 long set_new_driver( int group ){
     int ret;
     struct devices_created * iter;
-	if(!lock_initialized){
-		rwlock_init(&ldm_lock);
-		lock_initialized=1;
-	}
+	down_write(&rw_semaphore);
 	if(list_devices_created){
-		read_lock_irqsave(&ldm_lock, lock_flags);
 		list_for_each_entry(iter, &devices.list, list){
-				printk(KERN_ALERT "group %d", iter->group);
 				if(iter->group == group){
-					read_unlock_irqrestore(&ldm_lock, lock_flags);
+					up_write(&rw_semaphore);
 					return 0;
 				}
 		}
-		read_unlock_irqrestore(&ldm_lock, lock_flags);
 	}
-	write_lock_irqsave(&ldm_lock, lock_flags);
     ret = init_new_device(group);
     if (!ret){
         if (!list_devices_created){
@@ -75,15 +69,16 @@ long set_new_driver( int group ){
 			list_devices_created=1;
         }
         ret = add_group_list(&devices, group, current_devt, major_number);
+		printk(KERN_ALERT "ret is %d", ret);
 		if(ret<0){
-			write_unlock_irqrestore(&ldm_lock, lock_flags);
+			up_write(&rw_semaphore);
 			return -1;
 		}
 		number_devices++;
-		write_unlock_irqrestore(&ldm_lock, lock_flags);
+		up_write(&rw_semaphore);
         return 0;
     }
-	write_unlock_irqrestore(&ldm_lock, lock_flags);
+	up_write(&rw_semaphore);
     return -1;
 }
 
@@ -113,7 +108,7 @@ int  init_new_device(int group)
 {
 	int err;
 	char * driver_name ;
-	driver_name = kmalloc(sizeof(char) * 20,0 );
+	driver_name = kmalloc(sizeof(char) * 40,GFP_KERNEL );
 	if(driver_name==NULL){
 		return -ENOMEM;
 	}
@@ -123,12 +118,11 @@ int  init_new_device(int group)
 	// Dynamically allocate a major_number for the device
 	if (major_number < 0) {
 		printk(KERN_ERR "%s: Failed registering char device\n", driver_name);
-		err = major_number;
+		err = PTR_ERR(major_number);
 		goto finish;
 	}
 
 	// Create a device in the previously created class
-    printk(KERN_ERR "%d number devices", number_devices);
 	// if(current_devt==-1){
 	current_devt = MKDEV(major_number,0);
 	// }

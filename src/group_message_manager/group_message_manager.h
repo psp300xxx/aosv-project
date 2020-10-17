@@ -1,7 +1,7 @@
 #pragma once
 #include <linux/fs.h>
 #include <linux/list.h>
-#include <linux/spinlock.h>
+#include <linux/rwsem.h>
 #include <linux/timekeeping.h>
 // #include "../common.h"
 #include "../thread_manager_spowner/thread_manager_spowner.h"
@@ -27,20 +27,16 @@ struct sleeping_tid{
 typedef struct {
     unsigned long open_count;
     unsigned long control_number;
-    unsigned long lock_flags;
-    rwlock_t lock;
-    rwlock_t publishing_lock;
-    unsigned long publishing_lock_flags;
     ktime_t sending_delay;
-    struct mutex writing_mutex;
     int msg_in_delivering;
     int msg_in_publishing;
     struct message_queue delivering_queue;
     struct message_queue publishing_queue;
     struct sleeping_tid sleeping_tid_list;
-    rwlock_t sleeping_tid_lock;
     int number_of_sleeping_tid;
-    unsigned long sleeping_lock_flags;
+    struct rw_semaphore delivering_semaphore;
+    struct rw_semaphore publishing_semaphore;
+    struct rw_semaphore sleeping_tid_semaphore;
 } node_information;
 
 
