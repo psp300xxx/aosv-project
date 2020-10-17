@@ -69,7 +69,6 @@ long set_new_driver( int group ){
 			list_devices_created=1;
         }
         ret = add_group_list(&devices, group, current_devt, major_number);
-		printk(KERN_ALERT "ret is %d", ret);
 		if(ret<0){
 			up_write(&rw_semaphore);
 			return -1;

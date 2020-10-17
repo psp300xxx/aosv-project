@@ -246,6 +246,11 @@ ssize_t gmm_read(struct file * file, char * buffer, size_t lenght, loff_t * offs
     list_is_empty = list_empty(&node_info->publishing_queue.list);
     if( !list_is_empty ){
         iter = get_minimum_message(node_info);
+        if(iter==NULL){
+            // I have no valid messages, so it's like having an empty queue
+            goto empty_queue;
+        }
+        printk( "min is %s", iter->message->text );
         down_write(&node_info->publishing_semaphore);
         down_write(&node_info->delivering_semaphore);
         list_del(&iter->list);
@@ -275,6 +280,7 @@ ssize_t gmm_read(struct file * file, char * buffer, size_t lenght, loff_t * offs
     }
     else {
         // queue is empty
+    empty_queue:
         ret = strlen(QUEUE_EMPTY_MESSAGE);
         err_msg = kmalloc(sizeof(char)*ret, GFP_KERNEL);
         if(err_msg==NULL){
