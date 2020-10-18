@@ -28,7 +28,7 @@ static struct class *dev_cl = NULL;
 static struct device *device = NULL;
 
 
-
+// Variables configurable from /sys valid for the entire module
 int bytes_per_message = 100;
 module_param(bytes_per_message, int, S_IRUGO|S_IWUSR);
 int total_bytes_in_queue = 100 * 4000 ;

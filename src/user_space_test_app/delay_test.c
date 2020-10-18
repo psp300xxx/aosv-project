@@ -18,7 +18,7 @@ int main(void){
         // set up data for tests
     srand(getpid());
     groupt * group_descriptor;
-    int val;
+    int val_fd;
     int ret;
     group_descriptor = malloc(sizeof(groupt));
     message = malloc(sizeof(char)*message_len);
@@ -55,6 +55,37 @@ int main(void){
     // I read again the messages
     ret = read_message(fd, message, message_len);
     printf("After waiting: %s\n",message);
+    // TODO: Flush test
+    printf("Setting big delay\n");
+    ret = set_message_delay(fd, millis_delay*100);
+    if(ret<0){
+        perror("Problems in delaying");
+        return -1;
+    }
+    sprintf(message, MESSAGE_TEXT);
+    ret = write_message(fd,message, strlen(message));
+    if(ret<0){
+        perror("writing");
+        return -1;
+    }
+    // I read the message, since the delay has not passed, I should not read the previous message
+    sprintf(message, " ");
+    ret = read_message(fd, message, message_len);
+    printf("Before flushing :%s\n", message);
+    close_group(fd);
+    printf("group desc %p\n", group_descriptor);
+    val_fd = open_group(group_descriptor);
+    if(fd<0){
+        perror("new opening");
+        return -1;
+    }
+    ret = read_message(val_fd, message, message_len);
+    if(ret<0){
+        perror("reading");
+        return -1;
+    }
+    // Since close() forced flush(), message ha to be visible
+    printf("after flushing :%s\n", message);
     close_group(fd);
     free(group_descriptor);
     free(message);

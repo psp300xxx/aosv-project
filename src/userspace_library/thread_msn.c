@@ -56,6 +56,14 @@ end:
     return group_fd;
 }
 
+// // This function flushes all the delayed messages for the given group 
+// int flush_group_messages(int file_descriptor){
+//     int ret;
+//     ret = flush(file_descriptor);
+//     return ret;
+// }
+
+
 // tries to write a message into the group managed by the given file descriptor
 // I assume message has been already allocated
 int write_message(int file_descriptor, char * message, int max_length){
@@ -77,7 +85,7 @@ long set_message_delay(int file_descriptor, long new_delay){
     return ret;
 }
 
-int close_group(int file_descriptor){
+void close_group(int file_descriptor){
     close(file_descriptor);
 }
 

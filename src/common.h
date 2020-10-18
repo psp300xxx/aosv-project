@@ -1,4 +1,4 @@
-// #include <sys/types.h>
+// This is an header file common to all the project..
 
 typedef struct {
     int group;
@@ -23,5 +23,3 @@ typedef struct {
 #define IOCTL_GMM_SLEEP_TID _IOW(GMM_IOC_MAGIC, 2, long )
 
 #define IOCTL_GMM_AWAKE_TIDS _IO(GMM_IOC_MAGIC,3 )
-
-#define IOCTL_GMM_REVOKE_DELAYED _IO(GMM_IOC_MAGIC,4)

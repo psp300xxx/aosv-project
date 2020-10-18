@@ -24,6 +24,8 @@ struct sleeping_tid{
 };
 
 
+// Struct containing information for the group 
+// managed by the tid.
 typedef struct {
     unsigned long open_count;
     unsigned long control_number;
@@ -56,11 +58,9 @@ int gmm_flush (struct file *, fl_owner_t id);
 
 long gmm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 
+// Since I declare the class into another file, I let the other file obtain
+// the file_operation struct needed.
 extern struct file_operations file_ops_gmm_origin;
 
-// // IOCTL INFORMATIONS
 
-// #define GMM_IOC_MAGIC 'R'
-
-// #define IOCTL_GMM_SET_DELAY _IOW(GMM_IOC_MAGIC, 1, long * )
 

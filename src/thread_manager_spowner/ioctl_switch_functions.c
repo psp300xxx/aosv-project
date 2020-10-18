@@ -17,19 +17,21 @@
 struct device *device_group = NULL;
 EXPORT_SYMBOL(device_group);
 
-
+// Driver name for the newly created group
 char * driver_name = NULL;
 int major_number;
 static dev_t  current_devt = 1;
+// Devices created
 static int number_devices = 0;
 struct devices_created devices;
 int list_devices_created =0;
 
+// Semaphore protecting the list of semaphore created
 static DECLARE_RWSEM(rw_semaphore);
 
 int current_open(struct inode *inode, struct file *filp);
 
-
+// called in exiting from module, I destroy all the group data and relative devices
 void unregister_and_destroy_all_devices(){
 		struct devices_created * iter;
 		char * current_driver_name;
@@ -53,6 +55,7 @@ void unregister_and_destroy_all_devices(){
 long set_new_driver( int group ){
     int ret;
     struct devices_created * iter;
+	// Checks if group already exists
 	down_write(&rw_semaphore);
 	if(list_devices_created){
 		list_for_each_entry(iter, &devices.list, list){
@@ -62,6 +65,8 @@ long set_new_driver( int group ){
 				}
 		}
 	}
+	// If not, I try to create a new one
+	// And I add it into the list.
     ret = init_new_device(group);
     if (!ret){
         if (!list_devices_created){
@@ -121,13 +126,8 @@ int  init_new_device(int group)
 		goto finish;
 	}
 
-	// Create a device in the previously created class
-	// if(current_devt==-1){
 	current_devt = MKDEV(major_number,0);
-	// }
-	// else {
-    // 	current_devt = MKDEV(MAJOR(current_devt), MINOR(current_devt)+1);
-	// }
+
 	device_group = device_create(dev_cl_group, NULL, current_devt, NULL, driver_name);
 	if (IS_ERR(device_group)) {
 		pr_err("%s:%d error code %ld \n", __func__, __LINE__, PTR_ERR(device_group));
