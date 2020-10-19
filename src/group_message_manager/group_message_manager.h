@@ -58,6 +58,8 @@ int gmm_flush (struct file *, fl_owner_t id);
 
 long gmm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
 
+void destroy_hashtable_data(void);
+
 // Since I declare the class into another file, I let the other file obtain
 // the file_operation struct needed.
 extern struct file_operations file_ops_gmm_origin;

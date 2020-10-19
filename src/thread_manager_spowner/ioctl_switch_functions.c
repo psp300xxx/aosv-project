@@ -33,6 +33,7 @@ int current_open(struct inode *inode, struct file *filp);
 
 // called in exiting from module, I destroy all the group data and relative devices
 void unregister_and_destroy_all_devices(){
+		// destroy_hashtable_data();
 		struct devices_created * iter;
 		char * current_driver_name;
 		if( !list_devices_created ){

@@ -20,6 +20,5 @@ all:
 
 clean:
 			make -C $(LINUX_KERNEL_PATH) M=$(CURRENT_PATH) clean
-			rm main.out
 			rm  $(CURRENT_PATH)/tests/*
 
