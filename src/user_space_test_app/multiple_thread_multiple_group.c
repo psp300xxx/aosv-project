@@ -3,7 +3,7 @@
 #include "../userspace_library/thread_msn.h"
 #include <pthread.h>
 
-
+const long seconds_delay = 0.2;
 int launch_group(groupt * group);
 
 groupt * group_descriptors;
@@ -43,6 +43,12 @@ void * read_and_write(groupt * group_desc){
     int fd;
     int ret;
     char * message;
+    fd = open_group(group_desc);
+    if(fd<0){
+        perror("opening group");
+        group_desc ->open_times ++;
+        return NULL;
+    }
     message = malloc(sizeof(char)*MAX_STRING_LEN);
     if(message==NULL){
         perror("memory");
@@ -53,6 +59,7 @@ void * read_and_write(groupt * group_desc){
     if(array==NULL){
         perror("memory");
         group_desc ->open_times ++;
+        free(message);
         return NULL;
     }
     for(int i =0; i<number_of_elements;i++){
@@ -62,34 +69,34 @@ void * read_and_write(groupt * group_desc){
             group_desc ->open_times ++;
             return NULL;
         }
-        sprintf(array[i], "From tid %d, in group %d, message:%d\n", gettid(),group_desc->group, i);
-    }
-    fd = open_group(group_desc);
-    if(fd<0){
-        perror("opening group");
-        group_desc ->open_times ++;
-        return NULL;
+        sprintf(array[i], "%d\n", group_desc->group,gettid(), i);
     }
     printf("fd is %d\n", fd);
     for(int i = 0 ; i<number_of_elements; i++){
-        ret = write_message(fd, array[i], MAX_STRING_LEN);
+        ret = write_message(fd, array[i], strlen(array[i]));
         if(ret<0){
             perror("writing");
             break;
         }
-        sleep(0.2);
+        sleep(seconds_delay);
     }  
     for(int i = 0 ; i<number_of_elements; i++){
+        sleep(seconds_delay);
         ret = read_message(fd, message, MAX_STRING_LEN);
         if(ret<0){
             perror("reading");
             break;
         }
-        sleep(0.2);
-        printf("\nread:\n group %d \n %s\n\n",group_desc->group, message);
+        int group_id;
+        printf("\n%s\n\n", message);
+        sscanf(message,"%d",&group_id);
+        if( group_desc->group != group_id ){
+            fprintf(stderr, "Error: WRONG GROUP group_id  %d, real_group %d\n", group_id, group_desc->group);
+            break;
+        }
     }
     close_group(fd);
-    // free data
+    // free dataf
     group_desc ->open_times ++;
     free(message);
     for(int i =0 ; i<number_of_elements; i++){
