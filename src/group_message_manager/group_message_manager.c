@@ -124,9 +124,7 @@ int gmm_release(struct inode * inode, struct file * filp){
 }
 
 
-void destroy_map(){
 
-}
 
 // IOCTL function
 long gmm_ioctl(struct file *filp, unsigned int cmd, unsigned long arg){
@@ -209,16 +207,36 @@ inline struct message_queue * get_minimum_message(node_information * node_info){
     return min; 
 }
 
+inline struct message_queue * get_minimum_message_no_constrains(node_information * node_info){
+    struct message_queue * curr;
+    struct message_queue * min;
+    curr = NULL;
+    min = NULL;
+    list_for_each_entry(curr, &node_info->publishing_queue.list, list){
+			if(curr->publishing_time >0){
+                    if (min==NULL){
+                        min = curr;
+                    }
+                    else {
+                        if(curr->publishing_time < min->publishing_time){
+                            min = curr;
+                        }
+                    }
+			}
+	}
+    return min; 
+}
+
 // Flushing system call
 // All messages in publishing queue are inserted into delivering queue.
+// In order of publishing time
 int gmm_flush (struct file * filp, fl_owner_t id){
     node_information * node_info;
     struct message_queue * curr;
     node_info = filp->private_data;
     down_write(&node_info->publishing_semaphore);
     down_write(&node_info->delivering_semaphore);
-    while( !list_empty(&node_info->publishing_queue.list) ){
-        curr = list_first_entry(&node_info->publishing_queue.list, struct message_queue, list);
+    while( (curr =  get_minimum_message_no_constrains(node_info)) != NULL ){
         list_del(&curr->list);
         list_add_tail(&curr->list, &node_info->delivering_queue.list);
         node_info->msg_in_delivering++;
@@ -304,7 +322,7 @@ ssize_t gmm_write(struct file * file, const char __user * buffer, size_t length,
     node_info = file->private_data;
     bytes_used = (node_info->msg_in_delivering + node_info->msg_in_publishing)*bytes_per_message;
     // Checks on msg size and total size for the queue
-    if(length > bytes_per_message || bytes_used>=total_bytes_in_queue){
+    if(length > bytes_per_message || (bytes_used + bytes_per_message )>=total_bytes_in_queue){
         return -ENOMEM;
     }
     if( is_in_sleeping_tids(current->pid, node_info) ){

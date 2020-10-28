@@ -73,7 +73,6 @@ int main(void){
     ret = read_message(fd, message, message_len);
     printf("Before flushing :%s\n", message);
     close_group(fd);
-    printf("group desc %p\n", group_descriptor);
     val_fd = open_group(group_descriptor);
     if(fd<0){
         perror("new opening");
