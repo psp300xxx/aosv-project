@@ -27,7 +27,33 @@ struct h_node {
 };
 
 void destroy_hashtable_data(void){
-    
+    struct h_node * curr;
+    int bucket;
+    node_information * current_node_info;
+    struct message_queue * msg;
+    bucket = 0;
+    hash_for_each(hash_table, bucket, curr, node_info){
+            current_node_info = curr->data;
+            down_write(&current_node_info->publishing_semaphore);
+            down_write(&current_node_info->delivering_semaphore);
+            down_write(&current_node_info->sleeping_tid_semaphore);
+            while(! list_empty(&current_node_info->publishing_queue.list ) ){
+                msg = list_first_entry(&current_node_info->publishing_queue.list, struct message_queue, list);
+                list_del(&msg->list);
+                vfree(msg->message->text);
+                kfree(msg->message);
+            }
+            while(! list_empty(&current_node_info->delivering_queue.list ) ){
+                msg = list_first_entry(&current_node_info->delivering_queue.list, struct message_queue, list);
+                list_del(&msg->list);
+                vfree(msg->message->text);
+                kfree(msg->message);
+            }
+            kfree(current_node_info);
+            up_write(&current_node_info->publishing_semaphore);
+            up_write(&current_node_info->delivering_semaphore);
+            up_write(&current_node_info->sleeping_tid_semaphore);
+    }
 }
 
 node_information * create_node_info(int major_number);
