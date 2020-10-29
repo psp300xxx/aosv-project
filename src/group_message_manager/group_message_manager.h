@@ -32,6 +32,7 @@ typedef struct {
     ktime_t sending_delay;
     int msg_in_delivering;
     int msg_in_publishing;
+    int major_number;
     struct message_queue delivering_queue;
     struct message_queue publishing_queue;
     struct sleeping_tid sleeping_tid_list;

@@ -30,11 +30,11 @@ void destroy_hashtable_data(void){
     
 }
 
-node_information * create_node_info(void);
+node_information * create_node_info(int major_number);
 
 // creates a new node (Group Informations)
 // Having the first values needed at the beginning
-inline node_information * create_node_info(){
+inline node_information * create_node_info(int major_number){
     node_information * node_info;
     node_info = kmalloc(sizeof(node_information), GFP_KERNEL);
     if(node_info==NULL){
@@ -48,6 +48,7 @@ inline node_information * create_node_info(){
     INIT_LIST_HEAD(&node_info->publishing_queue.list);
     INIT_LIST_HEAD(&node_info->sleeping_tid_list.list);
     node_info->msg_in_delivering = 0;
+    node_info->major_number = major_number;
     node_info->msg_in_publishing = 0;
     node_info ->number_of_sleeping_tid = 0;
     node_info -> open_count = 0;
@@ -67,7 +68,7 @@ node_information * get_device_data(dev_t i_ino){
     tmp = NULL;
     hash_for_each_possible_safe(hash_table, cur,tmp, node_info, key) {
         node_info = (node_information *) cur->data;
-        if(node_info->control_number == CONTROL_NUMBER){
+        if(node_info->control_number == CONTROL_NUMBER && node_info->major_number == MAJOR(i_ino)){
             return node_info;
         }
     }
@@ -103,7 +104,7 @@ int gmm_open(struct inode *inode, struct file *filp){
     node_info = get_device_data(inode->i_rdev);
     if ( node_info == NULL ){
         // creating new data for this newly created group
-        node_info = create_node_info();
+        node_info = create_node_info(MAJOR(inode->i_rdev));
         if(node_info==NULL){
             return -1;
         }
